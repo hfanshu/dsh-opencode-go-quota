@@ -7,10 +7,11 @@
  *      weekly, monthly — each with a bar, remaining share, fixed dollar cap,
  *      and the reset countdown. It registers a card on the right Sidebar's
  *      guide page, so the panel is reached from 开始 → OpenCode Go 余量.
- *   2. A ring gauge in the left sidebar's footer row (`sidebar.footer.action`):
- *      the arc is the *most constrained* window's remaining share, so a glance
- *      answers "am I about to run out?". Hovering (or focusing) opens a compact
- *      card with all three windows; clicking reveals surface 1.
+ *   2. A ring gauge in the composer's bottom dock (`conversation.composer.dock`,
+ *      beside the context meter): the arc is the *most constrained* window's
+ *      remaining share, so a glance answers "am I about to run out?". Hovering
+ *      (or focusing) opens a compact card with all three windows; clicking
+ *      reveals surface 1.
  *
  * Data arrives from the Host's same-origin `/api/opencode-go/usage` (the Host
  * owns the API key; the browser never sees it). The Zen usage endpoint reports
@@ -225,14 +226,17 @@ window.__ModuleLoader__.load({
         'background:var(--dsw-alias-bg-layer-2,rgba(0,0,0,.04));color:var(--dsw-alias-label-secondary,#555);',
         'overflow-x:auto;white-space:pre;margin:0}',
         '.ogq-loading{color:var(--dsw-alias-label-tertiary,#999);font-size:12px;padding:8px 0}',
-        // Footer badge: a 26px ring gauge that belongs to the sidebar chrome
-        // rather than to a panel, so it keeps its footprint in either state.
-        '.ogq-badge-wrap{position:relative;display:flex;align-items:center;justify-content:center}',
-        '.ogq-badge{width:26px;height:26px;padding:0;border:0;border-radius:9px;background:transparent;display:flex;',
+        // Composer dock gauge: 22px so it sits on the dock's 22px line next to
+        // the context meter instead of stretching the row. The slot anchor is
+        // `display: contents`, so this wrapper is the flex item and `order`
+        // puts it after the meter (the row's right end) rather than between
+        // the stats and the meter.
+        '.ogq-badge-wrap{position:relative;display:flex;align-items:center;justify-content:center;order:1}',
+        '.ogq-badge{width:22px;height:22px;padding:0;border:0;border-radius:8px;background:transparent;display:flex;',
         'align-items:center;justify-content:center;cursor:pointer;color:var(--dsw-alias-label-secondary,#555)}',
         '.ogq-badge:hover,.ogq-badge:focus-visible{background:var(--dsw-alias-interactive-bg-hover,rgba(0,0,0,.05));',
         'outline:none}',
-        '.ogq-ring{width:18px;height:18px;display:block;overflow:visible}',
+        '.ogq-ring{width:16px;height:16px;display:block;overflow:visible}',
         '.ogq-ring-track{stroke:var(--dsw-alias-border-l3,rgba(0,0,0,.14))}',
         '.ogq-ring-fill{stroke-linecap:round;transition:stroke-dasharray .4s ease}',
         '.ogq-ring-ok{stroke:var(--dsw-alias-state-success-primary,#12b76a)}',
@@ -814,7 +818,7 @@ window.__ModuleLoader__.load({
           console.warn('opencode-go-quota: right-sidebar registration failed', error);
         }
 
-        // Footer gauge, click target first: the tab type is opened through the
+        // Composer dock, click target first: the tab type is opened through the
         // Sidebar Right service, which arrives after this bundle (never predict
         // its load order — bind when it is there).
         let openQuotaTab = () => {};
@@ -832,16 +836,16 @@ window.__ModuleLoader__.load({
           console.warn('opencode-go-quota: right-sidebar service unavailable', error);
         }
 
-        // `sidebar.footer.action` is a list slot, so the gauge sits beside
-        // whatever else the profile puts in the sidebar footer.
+        // `conversation.composer.dock` is a session-scoped list slot: the gauge
+        // lands in the composer's bottom strip, beside the context meter.
         try {
-          ctx.slots.inject('sidebar.footer.action', () => ctx.slots.register({
-            name: 'sidebar.footer.action',
+          ctx.slots.inject('conversation.composer.dock', () => ctx.slots.register({
+            name: 'conversation.composer.dock',
             id: 'opencode-go-quota-badge',
             order: 20,
           }, () => h(QuotaBadge, { t, bus, openTab: () => openQuotaTab() })));
         } catch (error) {
-          console.warn('opencode-go-quota: footer badge registration failed', error);
+          console.warn('opencode-go-quota: composer dock registration failed', error);
         }
       },
     };

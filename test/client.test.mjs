@@ -129,8 +129,8 @@ test('registers the right-pane tab and the footer gauge', async () => {
   assert.equal(tab.options.key, 'opencode-go-quota');
   assert.equal(typeof tab.component, 'function');
 
-  const badge = registrations.find((entry) => entry.options.name === 'sidebar.footer.action');
-  assert.ok(badge, 'sidebar.footer.action was not registered');
+  const badge = registrations.find((entry) => entry.options.name === 'conversation.composer.dock');
+  assert.ok(badge, 'conversation.composer.dock was not registered');
   assert.equal(badge.options.id, 'opencode-go-quota-badge');
   assert.equal(typeof badge.component, 'function');
 });
@@ -139,7 +139,7 @@ test('the gauge ring draws the tightest window and opens the tab on click', asyn
   const bundle = await loadBundle();
   const { ctx, registrations, openedTabs } = createClientCtx();
   bundle.apply(ctx);
-  const badge = registrations.find((entry) => entry.options.name === 'sidebar.footer.action');
+  const badge = registrations.find((entry) => entry.options.name === 'conversation.composer.dock');
 
   // The registration supplies `t`/`bus`/`openTab`; render the component it
   // names so the test can hand it a state instead of the live poller.
@@ -177,7 +177,7 @@ test('without data the ring is idle and the tooltip stays closed', async () => {
   const bundle = await loadBundle();
   const { ctx, registrations } = createClientCtx();
   bundle.apply(ctx);
-  const badge = registrations.find((entry) => entry.options.name === 'sidebar.footer.action');
+  const badge = registrations.find((entry) => entry.options.name === 'conversation.composer.dock');
   const QuotaBadge = badge.component({}).type;
 
   const bus = { get: () => ({ phase: 'init', data: null, error: null, loading: true }), subscribe: () => () => {} };
