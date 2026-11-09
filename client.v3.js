@@ -1,12 +1,16 @@
 /**
  * dsh-opencode-go-quota — Client half.
  *
- * One surface: a right-sidebar tab (`sidebar.right.pane.tab`, kind
- * `opencode-go-quota`) showing all three budget windows — rolling 5h, weekly,
- * monthly — each with a bar, remaining share, fixed dollar cap, and the reset
- * countdown. It registers a card on the right Sidebar's guide page, so the
- * panel is reached from 开始 → OpenCode Go 余量. There is deliberately no
- * left-sidebar entry: the panel lives where the other session panels live.
+ * Two surfaces over one poller:
+ *   1. A right-sidebar tab (`sidebar.right.pane.tab`, kind
+ *      `opencode-go-quota`) showing all three budget windows — rolling 5h,
+ *      weekly, monthly — each with a bar, remaining share, fixed dollar cap,
+ *      and the reset countdown. It registers a card on the right Sidebar's
+ *      guide page, so the panel is reached from 开始 → OpenCode Go 余量.
+ *   2. A ring gauge in the left sidebar's footer row (`sidebar.footer.action`):
+ *      the arc is the *most constrained* window's remaining share, so a glance
+ *      answers "am I about to run out?". Hovering (or focusing) opens a compact
+ *      card with all three windows; clicking reveals surface 1.
  *
  * Data arrives from the Host's same-origin `/api/opencode-go/usage` (the Host
  * owns the API key; the browser never sees it). The Zen usage endpoint reports
@@ -64,6 +68,14 @@ window.__ModuleLoader__.load({
         'source.none': '未找到',
         'footer.hint': '数据来自 {{endpoint}} · 每 60 秒自动刷新 · 余量 = 100 − 已用百分比',
         'footer.budgets': 'Go 计划固定额度：5 小时 ${{rolling}} · 本周 ${{weekly}} · 本月 ${{monthly}}；具体金额以官方账单为准',
+        'badge.title': 'OpenCode Go 余量',
+        'badge.aria': 'OpenCode Go 余量，最紧的窗口还剩 {{value}}%',
+        'badge.ariaEmpty': 'OpenCode Go 余量，暂无数据',
+        'badge.updated': '更新于 {{time}}',
+        'badge.stale': '实时读取失败，显示旧数据',
+        'badge.open': '打开余量面板',
+        'badge.noKey': '还没有 API key',
+        'badge.noData': '暂无余量数据',
       },
       en: {
         'tab.title': 'Go quota',
@@ -101,6 +113,14 @@ window.__ModuleLoader__.load({
         'source.none': 'not found',
         'footer.hint': 'Data from {{endpoint}} · refreshes every 60s · remaining = 100 − used percent',
         'footer.budgets': 'Go plan caps: ${{rolling}} per 5 hours · ${{weekly}} weekly · ${{monthly}} monthly; the provider bill is authoritative',
+        'badge.title': 'OpenCode Go quota',
+        'badge.aria': 'OpenCode Go quota, {{value}}% left in the tightest window',
+        'badge.ariaEmpty': 'OpenCode Go quota, no data yet',
+        'badge.updated': 'Updated {{time}}',
+        'badge.stale': 'Live read failed — showing stale data',
+        'badge.open': 'Open quota panel',
+        'badge.noKey': 'No API key yet',
+        'badge.noData': 'No quota data yet',
       },
     };
 
@@ -161,10 +181,10 @@ window.__ModuleLoader__.load({
 
     function ensureStyle() {
       if (typeof document === 'undefined') return;
-      if (document.getElementById(STYLE_ID) !== null) return;
-      const style = document.createElement('style');
-      style.id = STYLE_ID;
-      style.textContent = [
+      // Upsert rather than "first caller wins": a module replacement (client HMR)
+      // re-applies this bundle while the old <style> element is still mounted,
+      // so the element must be refreshed or newly added rules never arrive.
+      const css = [
         '.ogq-tone-ok{background:var(--dsw-alias-state-success-primary,#12b76a)}',
         '.ogq-tone-warn{background:var(--dsw-alias-state-warning-primary,#f79009)}',
         '.ogq-tone-danger{background:var(--dsw-alias-state-error-primary,#f04438)}',
@@ -205,8 +225,53 @@ window.__ModuleLoader__.load({
         'background:var(--dsw-alias-bg-layer-2,rgba(0,0,0,.04));color:var(--dsw-alias-label-secondary,#555);',
         'overflow-x:auto;white-space:pre;margin:0}',
         '.ogq-loading{color:var(--dsw-alias-label-tertiary,#999);font-size:12px;padding:8px 0}',
+        // Footer badge: a 26px ring gauge that belongs to the sidebar chrome
+        // rather than to a panel, so it keeps its footprint in either state.
+        '.ogq-badge-wrap{position:relative;display:flex;align-items:center;justify-content:center}',
+        '.ogq-badge{width:26px;height:26px;padding:0;border:0;border-radius:9px;background:transparent;display:flex;',
+        'align-items:center;justify-content:center;cursor:pointer;color:var(--dsw-alias-label-secondary,#555)}',
+        '.ogq-badge:hover,.ogq-badge:focus-visible{background:var(--dsw-alias-interactive-bg-hover,rgba(0,0,0,.05));',
+        'outline:none}',
+        '.ogq-ring{width:18px;height:18px;display:block;overflow:visible}',
+        '.ogq-ring-track{stroke:var(--dsw-alias-border-l3,rgba(0,0,0,.14))}',
+        '.ogq-ring-fill{stroke-linecap:round;transition:stroke-dasharray .4s ease}',
+        '.ogq-ring-ok{stroke:var(--dsw-alias-state-success-primary,#12b76a)}',
+        '.ogq-ring-warn{stroke:var(--dsw-alias-state-warning-primary,#f79009)}',
+        '.ogq-ring-danger{stroke:var(--dsw-alias-state-error-primary,#f04438)}',
+        '.ogq-ring-idle{stroke:var(--dsw-alias-label-tertiary,#999)}',
+        '.ogq-badge-idle{opacity:.6}',
+        // Hover card: fixed so the sidebar's overflow never clips it.
+        '.ogq-tip{position:fixed;z-index:80;box-sizing:border-box;padding:10px 12px;border-radius:12px;',
+        'border:1px solid var(--dsw-alias-border-l2,rgba(0,0,0,.08));background:var(--dsw-alias-bg-layer-1,#fff);',
+        'box-shadow:0 10px 30px rgba(0,0,0,.16);color:var(--dsw-alias-label-primary,#222);font-size:12px;line-height:1.5}',
+        '.ogq-tip-head{display:flex;align-items:baseline;gap:8px;margin-bottom:8px}',
+        '.ogq-tip-title{font-weight:600;font-size:12px;white-space:nowrap}',
+        '.ogq-tip-time{margin-left:auto;color:var(--dsw-alias-label-tertiary,#999);font-size:10px;font-variant-numeric:tabular-nums}',
+        '.ogq-tip-rows{display:flex;flex-direction:column;gap:9px}',
+        '.ogq-tip-row{display:flex;flex-direction:column;gap:4px}',
+        '.ogq-tip-row-head{display:flex;align-items:baseline;gap:6px}',
+        '.ogq-tip-name{font-size:11px;color:var(--dsw-alias-label-secondary,#666)}',
+        '.ogq-tip-pct{margin-left:auto;font-weight:600;font-size:12px;font-variant-numeric:tabular-nums}',
+        '.ogq-tip-ok{color:var(--dsw-alias-state-success-primary,#12b76a)}',
+        '.ogq-tip-warn{color:var(--dsw-alias-state-warning-primary,#f79009)}',
+        '.ogq-tip-danger{color:var(--dsw-alias-state-error-primary,#f04438)}',
+        '.ogq-tip-bar{height:5px;border-radius:999px;background:var(--dsw-alias-border-l3,rgba(0,0,0,.1));overflow:hidden}',
+        '.ogq-tip-bar-fill{height:100%;border-radius:999px;transition:width .35s ease}',
+        '.ogq-tip-reset{font-size:10px;color:var(--dsw-alias-label-tertiary,#999);font-variant-numeric:tabular-nums}',
+        '.ogq-tip-empty{color:var(--dsw-alias-label-secondary,#666);font-size:11px;padding:2px 0 4px}',
+        '.ogq-tip-note{margin-top:6px;color:var(--dsw-alias-state-warning-primary,#f79009);font-size:10px}',
+        '.ogq-tip-open{margin-top:8px;width:100%;height:24px;border-radius:7px;box-sizing:border-box;',
+        'border:1px solid var(--dsw-alias-border-l2,rgba(0,0,0,.1));background:transparent;',
+        'color:var(--dsw-alias-label-secondary,#555);font-size:11px;cursor:pointer}',
+        '.ogq-tip-open:hover{background:var(--dsw-alias-interactive-bg-hover,rgba(0,0,0,.04))}',
       ].join('');
-      document.head.appendChild(style);
+      let style = document.getElementById(STYLE_ID);
+      if (style === null) {
+        style = document.createElement('style');
+        style.id = STYLE_ID;
+        document.head.appendChild(style);
+      }
+      if (style.textContent !== css) style.textContent = css;
     }
 
     function pad2(value) {
@@ -507,6 +572,207 @@ window.__ModuleLoader__.load({
           h('span', null, t('footer.hint', { endpoint: data.endpoint ?? '' }))));
     }
 
+    /** Hover card width; clamped to the viewport before it is placed. */
+    const TIP_WIDTH = 272;
+    /** Rough height used to choose above/below before the card is measured. */
+    const TIP_ESTIMATED_HEIGHT = 190;
+
+    /** The live window with the least headroom — what the ring draws. */
+    function criticalWindow(data) {
+      if (data === null || typeof data !== 'object') return null;
+      const windows = data.windows;
+      if (windows === null || typeof windows !== 'object') return null;
+      let tightest = null;
+      for (const name of WINDOWS) {
+        const remaining = windowRemaining(windows[name]);
+        if (remaining === null) continue;
+        if (tightest === null || remaining < tightest.remaining) tightest = { name, remaining };
+      }
+      return tightest;
+    }
+
+    /** One line for the card when no window can be drawn. */
+    function badgeStateText(t, data, phase) {
+      if (phase === 'offline') return t('state.hostOffline');
+      if (data === null || phase === 'init') return t('state.loading');
+      const code = data.error ? data.error.code : null;
+      if (code === 'no_key') return t('badge.noKey');
+      if (code === 'unauthorized') return t('state.unauthorized');
+      return code ? t('state.offline') : t('badge.noData');
+    }
+
+    /** Place the card above the trigger, or below it when there is no room. */
+    function tipPlacement(anchor) {
+      if (anchor === null || anchor === undefined || typeof window === 'undefined') return null;
+      const width = Math.max(180, Math.min(TIP_WIDTH, window.innerWidth - 16));
+      const left = Math.max(8, Math.min(anchor.left, window.innerWidth - width - 8));
+      if (anchor.top - TIP_ESTIMATED_HEIGHT - 10 >= 8) {
+        return { left, width, bottom: window.innerHeight - anchor.top + 8 };
+      }
+      return { left, width, top: anchor.bottom + 8 };
+    }
+
+    /** One window inside the hover card: name, remaining share, bar, countdown. */
+    function TipRow({ t, name, windowState, now }) {
+      const remaining = windowRemaining(windowState);
+      const tone = toneOf(remaining);
+      const resetMs = resetAtMs(windowState);
+      const countdown = resetMs === null ? null : formatCountdown(resetMs - now);
+      return h('div', { className: 'ogq-tip-row' },
+        h('div', { className: 'ogq-tip-row-head' },
+          h('span', { className: 'ogq-tip-name' }, t(`window.${name}`)),
+          h('span', { className: `ogq-tip-pct ogq-tip-${tone}` },
+            remaining === null ? '—' : `${formatPercent(remaining)}%`)),
+        h('div', { className: 'ogq-tip-bar' },
+          h('div', {
+            className: `ogq-tip-bar-fill ogq-tone-${tone}`,
+            style: { width: `${remaining === null ? 0 : remaining}%` },
+          })),
+        countdown === null ? null : h('div', { className: 'ogq-tip-reset' }, t('window.resetIn', { value: countdown })));
+    }
+
+    /** The hover/focus card: every window at once, plus the way into the panel. */
+    function QuotaTip({ t, data, phase, anchor, now, onOpen }) {
+      const placement = tipPlacement(anchor);
+      if (placement === null) return null;
+      const style = { left: `${placement.left}px`, width: `${placement.width}px` };
+      if (placement.bottom === undefined) style.top = `${placement.top}px`;
+      else style.bottom = `${placement.bottom}px`;
+      const windows = data !== null && data.windows !== null && typeof data.windows === 'object' ? data.windows : null;
+      const rows = windows === null ? [] : WINDOWS.filter((name) => windows[name] !== null && windows[name] !== undefined);
+      return h('div', { className: 'ogq-tip', style, role: 'dialog', 'aria-label': t('badge.title') },
+        h('div', { className: 'ogq-tip-head' },
+          h('span', { className: 'ogq-tip-title' }, t('badge.title')),
+          data !== null && typeof data.fetchedAt === 'string' && data.fetchedAt !== ''
+            ? h('span', { className: 'ogq-tip-time' }, t('badge.updated', { time: formatClock(data.fetchedAt) }))
+            : null),
+        rows.length > 0
+          ? h('div', { className: 'ogq-tip-rows' },
+            rows.map((name) => h(TipRow, { key: name, t, name, windowState: windows[name], now })))
+          : h('div', { className: 'ogq-tip-empty' }, badgeStateText(t, data, phase)),
+        data !== null && data.stale === true ? h('div', { className: 'ogq-tip-note' }, t('badge.stale')) : null,
+        h('button', { type: 'button', className: 'ogq-tip-open', onClick: onOpen }, t('badge.open')));
+    }
+
+    /**
+     * The left sidebar's footer gauge. It shares the panel's poller (`bus`), so
+     * the ring stays live whether or not the right tab is open; hovering or
+     * focusing explains all three windows, and a click is the only way it opens
+     * the panel — the badge is telemetry first, launcher second.
+     */
+    function QuotaBadge({ t, bus, openTab }) {
+      const state = useBus(bus);
+      const data = state.data;
+      const [open, setOpen] = useState(false);
+      const [anchor, setAnchor] = useState(null);
+      const [now, setNow] = useState(() => Date.now());
+      const buttonRef = React.useRef(null);
+      const hideTimer = React.useRef(null);
+
+      const cancelHide = () => {
+        if (hideTimer.current !== null) {
+          clearTimeout(hideTimer.current);
+          hideTimer.current = null;
+        }
+      };
+
+      const show = () => {
+        cancelHide();
+        const node = buttonRef.current;
+        if (node === null || node === undefined || typeof node.getBoundingClientRect !== 'function') return;
+        const rect = node.getBoundingClientRect();
+        setAnchor({ left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom });
+        setNow(Date.now());
+        setOpen(true);
+      };
+
+      // A short grace period lets the pointer cross the gap into the card
+      // instead of the card flickering shut on the way.
+      const hideSoon = () => {
+        cancelHide();
+        hideTimer.current = setTimeout(() => {
+          hideTimer.current = null;
+          setOpen(false);
+        }, 120);
+      };
+
+      const hideNow = () => {
+        cancelHide();
+        setOpen(false);
+      };
+
+      useEffect(() => () => cancelHide(), []);
+
+      useEffect(() => {
+        if (!open) return undefined;
+        const id = setInterval(() => setNow(Date.now()), 1000);
+        return () => clearInterval(id);
+      }, [open]);
+
+      useEffect(() => {
+        if (!open) return undefined;
+        const onKeyDown = (event) => {
+          if (event.key === 'Escape') hideNow();
+        };
+        window.addEventListener('keydown', onKeyDown);
+        window.addEventListener('resize', hideNow);
+        return () => {
+          window.removeEventListener('keydown', onKeyDown);
+          window.removeEventListener('resize', hideNow);
+        };
+      }, [open]);
+
+      const tightest = criticalWindow(data);
+      const remaining = tightest === null ? null : tightest.remaining;
+      const tone = tightest === null ? 'idle' : toneOf(remaining);
+      const label = remaining === null
+        ? t('badge.ariaEmpty')
+        : t('badge.aria', { value: formatPercent(remaining) });
+
+      return h('div', {
+        className: 'ogq-badge-wrap',
+        onMouseEnter: show,
+        onMouseLeave: hideSoon,
+        onFocus: show,
+        onBlur: hideSoon,
+      },
+        h('button', {
+          type: 'button',
+          ref: buttonRef,
+          className: `ogq-badge${data === null ? ' ogq-badge-idle' : ''}`,
+          'aria-label': label,
+          'aria-expanded': open,
+          onClick: () => {
+            hideNow();
+            openTab();
+          },
+        },
+          h('svg', { viewBox: '0 0 24 24', className: 'ogq-ring', 'aria-hidden': 'true', focusable: 'false' },
+            h('circle', { className: 'ogq-ring-track', cx: 12, cy: 12, r: 9, fill: 'none', strokeWidth: 3 }),
+            h('circle', {
+              className: `ogq-ring-fill ogq-ring-${tone}`,
+              cx: 12,
+              cy: 12,
+              r: 9,
+              fill: 'none',
+              strokeWidth: 3,
+              pathLength: 100,
+              strokeDasharray: `${remaining === null ? 0 : Math.max(0, Math.min(100, remaining))} 100`,
+              transform: 'rotate(-90 12 12)',
+            }))),
+        open ? h(QuotaTip, {
+          t,
+          data,
+          phase: state.phase,
+          anchor,
+          now,
+          onOpen: () => {
+            hideNow();
+            openTab();
+          },
+        }) : null);
+    }
+
     return {
       inject: ['slots', 'locale'],
       apply(ctx) {
@@ -546,6 +812,36 @@ window.__ModuleLoader__.load({
           });
         } catch (error) {
           console.warn('opencode-go-quota: right-sidebar registration failed', error);
+        }
+
+        // Footer gauge, click target first: the tab type is opened through the
+        // Sidebar Right service, which arrives after this bundle (never predict
+        // its load order — bind when it is there).
+        let openQuotaTab = () => {};
+        try {
+          ctx.inject(['sidebarRight'], (scope) => {
+            openQuotaTab = () => {
+              try {
+                scope.sidebarRight.openTab(TAB_KIND);
+              } catch (error) {
+                console.warn('opencode-go-quota: opening the quota panel failed', error);
+              }
+            };
+          });
+        } catch (error) {
+          console.warn('opencode-go-quota: right-sidebar service unavailable', error);
+        }
+
+        // `sidebar.footer.action` is a list slot, so the gauge sits beside
+        // whatever else the profile puts in the sidebar footer.
+        try {
+          ctx.slots.inject('sidebar.footer.action', () => ctx.slots.register({
+            name: 'sidebar.footer.action',
+            id: 'opencode-go-quota-badge',
+            order: 20,
+          }, () => h(QuotaBadge, { t, bus, openTab: () => openQuotaTab() })));
+        } catch (error) {
+          console.warn('opencode-go-quota: footer badge registration failed', error);
         }
       },
     };

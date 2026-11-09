@@ -1,6 +1,6 @@
 {
   "meta": {
     "title": "OpenCode Go Quota",
-    "description": "An OpenCode Go quota tab for the right sidebar: the rolling 5-hour, weekly, and monthly windows with used and remaining share, reset countdowns, and the fixed $12 / $30 / $60 caps, opened from a card on the right Sidebar's guide page. The Host polls the OpenCode Go usage API, reusing DSH's own credential first; the key never reaches the browser."
+    "description": "OpenCode Go quota: a persistent ring gauge in the left sidebar footer (the arc is the tightest window's remaining share; hover for all three windows, click to open the panel) plus the quota tab in the right sidebar — the rolling 5-hour, weekly, and monthly windows with used and remaining share, reset countdowns, and the fixed $12 / $30 / $60 caps. The Host polls the OpenCode Go usage API, reusing DSH's own credential first; the key never reaches the browser."
   }
 }
