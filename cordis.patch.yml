@@ -1,0 +1,24 @@
+# dsh-opencode-go-quota bundle patch.
+# Row id `opencode-go-quota`; every value below can be overridden by a
+# higher-priority user layer in cordis.patch.yml without touching this file.
+- insert:
+    - id: opencode-go-quota
+      name: 'dsh-opencode-go-quota'
+      config:
+        # OpenCode Go API key (sk-...). Omitted -> $OPENCODE_GO_API_KEY, then
+        # $OPENCODE_API_KEY, then OpenCode's own auth file
+        # (~/.local/share/opencode/auth.json, entry "opencode-go").
+        # apiKey: 'sk-...'
+        # Optional explicit auth.json path (overrides the default locations).
+        # authPath: '~/.local/share/opencode/auth.json'
+        # Upstream base URL; `GET <baseUrl>/usage` is polled.
+        # baseUrl: 'https://opencode.ai/zen/go/v1'
+        # How long one upstream sample is reused (default 60000 ms).
+        # cacheMs: 60000
+        # Per-request timeout (default 15000 ms).
+        # timeoutMs: 15000
+        # Fixed Go plan budgets, shown next to the percentages.
+        # limits:
+        #   rolling: 12
+        #   weekly: 30
+        #   monthly: 60

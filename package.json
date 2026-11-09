@@ -1,0 +1,48 @@
+{
+  "name": "dsh-opencode-go-quota",
+  "version": "1.0.0",
+  "description": "OpenCode Go subscription quota as a right-sidebar tab: the rolling 5-hour / weekly / monthly windows with used and remaining share, reset countdowns, and the fixed $12/$30/$60 caps, opened from the right Sidebar's guide card and fed by the Zen usage API.",
+  "type": "module",
+  "license": "MIT",
+  "author": "hfanshu",
+  "keywords": [
+    "dsh",
+    "dsh-plugin",
+    "deepseek-harness",
+    "opencode",
+    "opencode-go",
+    "quota",
+    "usage"
+  ],
+  "main": "./index.js",
+  "exports": {
+    ".": "./index.js",
+    "./client": "./client.v3.js",
+    "./locale/*.json": "./locale/*.json"
+  },
+  "files": [
+    "index.js",
+    "client.v3.js",
+    "cordis.patch.yml",
+    "locale/*.json",
+    "docs/*.png",
+    "test/*.mjs",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=22.5"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "immediately": true,
+      "inject": [
+        "@deepseek-ai/dsh-client-ui-sidebar",
+        "@deepseek-ai/dsh-client-ui-sidebar-right"
+      ]
+    }
+  }
+}
