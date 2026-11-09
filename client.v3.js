@@ -24,6 +24,19 @@ window.__ModuleLoader__.load({
     const React = require('react');
     const h = React.createElement;
     const { useState, useEffect } = React;
+    // The hover card is portalled to <body>: the composer's dock sits under a
+    // transformed/backdrop-filtered ancestor, which turns `position: fixed`
+    // into "absolute inside that ancestor" and throws the card off to the
+    // right. Portalling restores viewport coordinates.
+    let createPortal = null;
+    try {
+      const reactDom = require('react-dom');
+      createPortal = typeof reactDom.createPortal === 'function' ? reactDom.createPortal
+        : typeof reactDom.default?.createPortal === 'function' ? reactDom.default.createPortal
+          : null;
+    } catch (error) {
+      console.warn('opencode-go-quota: react-dom portal unavailable', error);
+    }
     const NS = 'dsh-opencode-go-quota';
     const ROUTE = '/api/opencode-go/usage';
     const POLL_MS = 60000;
@@ -605,11 +618,13 @@ window.__ModuleLoader__.load({
       return code ? t('state.offline') : t('badge.noData');
     }
 
-    /** Place the card above the trigger, or below it when there is no room. */
+    /** Place the card directly above the trigger (centred on it), or below when
+     *  there is no room. */
     function tipPlacement(anchor) {
       if (anchor === null || anchor === undefined || typeof window === 'undefined') return null;
       const width = Math.max(180, Math.min(TIP_WIDTH, window.innerWidth - 16));
-      const left = Math.max(8, Math.min(anchor.left, window.innerWidth - width - 8));
+      const centre = (anchor.left + anchor.right) / 2;
+      const left = Math.max(8, Math.min(centre - width / 2, window.innerWidth - width - 8));
       if (anchor.top - TIP_ESTIMATED_HEIGHT - 10 >= 8) {
         return { left, width, bottom: window.innerHeight - anchor.top + 8 };
       }
@@ -636,7 +651,7 @@ window.__ModuleLoader__.load({
     }
 
     /** The hover/focus card: every window at once, plus the way into the panel. */
-    function QuotaTip({ t, data, phase, anchor, now, onOpen }) {
+    function QuotaTip({ t, data, phase, anchor, now, onOpen, onEnter, onLeave }) {
       const placement = tipPlacement(anchor);
       if (placement === null) return null;
       const style = { left: `${placement.left}px`, width: `${placement.width}px` };
@@ -644,7 +659,15 @@ window.__ModuleLoader__.load({
       else style.bottom = `${placement.bottom}px`;
       const windows = data !== null && data.windows !== null && typeof data.windows === 'object' ? data.windows : null;
       const rows = windows === null ? [] : WINDOWS.filter((name) => windows[name] !== null && windows[name] !== undefined);
-      return h('div', { className: 'ogq-tip', style, role: 'dialog', 'aria-label': t('badge.title') },
+      return h('div', {
+        className: 'ogq-tip',
+        style,
+        role: 'dialog',
+        'aria-label': t('badge.title'),
+        // Portalled outside the trigger, so it must keep itself alive.
+        onMouseEnter: onEnter,
+        onMouseLeave: onLeave,
+      },
         h('div', { className: 'ogq-tip-head' },
           h('span', { className: 'ogq-tip-title' }, t('badge.title')),
           data !== null && typeof data.fetchedAt === 'string' && data.fetchedAt !== ''
@@ -764,17 +787,33 @@ window.__ModuleLoader__.load({
               strokeDasharray: `${remaining === null ? 0 : Math.max(0, Math.min(100, remaining))} 100`,
               transform: 'rotate(-90 12 12)',
             }))),
-        open ? h(QuotaTip, {
-          t,
-          data,
-          phase: state.phase,
-          anchor,
-          now,
-          onOpen: () => {
-            hideNow();
-            openTab();
-          },
-        }) : null);
+        open ? (createPortal !== null
+          ? createPortal(h(QuotaTip, {
+            t,
+            data,
+            phase: state.phase,
+            anchor,
+            now,
+            onOpen: () => {
+              hideNow();
+              openTab();
+            },
+            onEnter: cancelHide,
+            onLeave: hideSoon,
+          }), document.body)
+          : h(QuotaTip, {
+            t,
+            data,
+            phase: state.phase,
+            anchor,
+            now,
+            onOpen: () => {
+              hideNow();
+              openTab();
+            },
+            onEnter: cancelHide,
+            onLeave: hideSoon,
+          })) : null);
     }
 
     return {
